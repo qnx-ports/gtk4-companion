@@ -1,0 +1,36 @@
+--- a/gdk/qnxscreen/gdkmonitor-qnxscreen.c
++++ b/gdk/qnxscreen/gdkmonitor-qnxscreen.c
+@@ -129,7 +129,7 @@
+   }
+ 
+   if (area->y + area->height > monitor_geometry.y + monitor_geometry.height) {
+-    area->y = monitor_geometry.y + monitor_geometry.height - monitor_geometry.width;
++    area->y = monitor_geometry.y + monitor_geometry.height - area->height;
+   }
+ 
+   if (area->y < monitor_geometry.y) {
+--- a/gdk/qnxscreen/gdksurface-qnxscreen.c
++++ b/gdk/qnxscreen/gdksurface-qnxscreen.c
+@@ -524,7 +524,7 @@
+   // Notify the display that this surface is about to be destroyed
+   gdk_qnxscreen_display_surface_destroyed (display, surface);
+ 
+-  g_hash_table_remove (display_impl->surface_window_table, GINT_TO_POINTER (impl->window_handle));
++  g_hash_table_remove (display_impl->surface_window_table, impl->window_handle);
+ 
+   if (impl->session_handle != NULL)
+     {
+--- a/gdk/qnxscreen/gdkdevice-qnxscreen.c
++++ b/gdk/qnxscreen/gdkdevice-qnxscreen.c
+@@ -562,6 +562,11 @@
+           pointer_state->window_handle = window_handle;
+           pointer_state->surface = g_hash_table_lookup (qnx_screen_display->surface_window_table, window_handle);
+         }
++      
++      // [MANUAL FIX] Stop if we are over a window we don't own (like the background)
++      if (pointer_state->surface == NULL) {
++          return;
++      }
+     }
+ 
+   /* send surface change event */

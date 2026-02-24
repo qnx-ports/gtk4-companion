@@ -1,0 +1,11 @@
+--- a/gdk/qnxscreen/meson.build.orig	2025-11-19 14:31:25.000000000 +0000
++++ b/gdk/qnxscreen/meson.build	2025-11-19 14:31:46.000000000 +0000
+@@ -28,7 +28,7 @@
+ 
+ install_headers(qnxscreen_public_headers, subdir: 'gtk-4.0/gdk/qnxscreen/')
+ 
+-qnx_screen_lib = cc.find_library('screen', required: true)
++qnx_screen_lib = cc.find_library('screen', required: true, dirs: ['/usr/lib', '/lib'])
+ 
+ gdk_qnxscreen_deps = [
+   qnx_screen_lib

@@ -1,0 +1,267 @@
+# Alpine-Contributor: Rasmus Thomsen <oss@cogitri.dev>
+# Alpine-Maintainer: team/gnome <pabloyoyoista@postmarketos.org>
+# Maintainer: Elliott Mazzuca <emazzuca@qnx.com>
+# Revised by: Felix Xing <fxing@qnx.com>
+pkgname=gtk4
+pkgver=4.13.6
+pkgrel=5
+pkgdesc="The GTK Toolkit (v4)"
+url="https://www.gtk.org/"
+arch="all"
+license="LGPL-2.1-or-later"
+options="!check" # Test suite is known to fail upstream
+depends_dev="
+    cairo-dev
+    gdk-pixbuf-dev
+    glib-dev
+    graphene-dev
+    pango-dev
+    wayland-dev
+    wayland-protocols
+    qnx-screen-dev
+    qnx-hid
+    "
+makedepends="$depends_dev
+    at-spi2-core-dev
+    bison
+    libepoxy-dev
+    libxkbcommon-dev
+    expat-dev
+    flex
+    fontconfig-dev
+    gettext-dev
+    gobject-introspection-dev
+    iso-codes-dev
+    meson
+    ninja
+    sassc
+    tiff-dev
+    zlib-dev
+    pkgconf
+    pkgconf-dev
+    "
+depends="
+    cairo
+    cairo-gobject
+    fontconfig
+    fribidi
+    gdk-pixbuf
+    glib
+    graphene
+    harfbuzz
+    libepoxy
+    libintl
+    libjpeg-turbo
+    libpng
+    libxkbcommon
+    pango
+    tiff
+    wayland
+    qnx-screen
+    "
+subpackages="
+    $pkgname-dbg
+    $pkgname-dev
+    $pkgname-demo
+    $pkgname-qnx-demos:qnx_demos
+    $pkgname-lang
+    "
+
+# Define QNX branch version
+_qnx_branch=qnx_4.8.3
+
+source="https://github.com/qnx-ports/gtk/archive/refs/heads/$_qnx_branch.zip
+    qnx-wayland-support.patch
+    qnx-screen-library-paths.patch
+    fix-qnxscreen-segfaults.patch
+    qnx-disable-broken-vulkan-renderer.patch
+    input-event-codes.h
+    005-fix-wayland-geometry-crash.patch
+    006-fix-gtk4-window-management.patch
+    "
+
+builddir="$srcdir/gtk-$_qnx_branch"
+
+# clang will be prefered
+export CC=clang
+export CXX=clang++
+export CFLAGS="$CFLAGS -O2 -ggdb -Qunused-arguments"
+export CXXFLAGS="$CPPFLAGS -O2 -ggdb -Qunused-arguments"
+_demo_output="$builddir"/qnx_demo_build
+
+_build_qnx_demos() {
+    msg "Building QNX demo applications..."
+    mkdir "$_demo_output"
+
+    _dep_names="glib-2.0 gio-2.0 gobject-2.0 \
+                cairo pango \
+                gdk-pixbuf-2.0 \
+                graphene-gobject-1.0"
+    _dep_cflags="$(pkg-config --cflags $_dep_names)"
+    _dep_libs="$(pkg-config --libs $_dep_names) -lgtk-4 -lepoxy"
+    _dep_lib_dirs="-L$builddir/build/gtk"
+    _dep_inc="-I$builddir/gtk -I$builddir/gdk \
+                -I$builddir/build -I$builddir\
+                -I$builddir/build/gtk -I$builddir/build/gdk \
+                -I$builddir/build/gdk/version"
+    _demo_cflags="$CFLAGS -Wno-deprecated-declarations -DIMAGE_RESOURCE_DIR=\"/usr/share/gtk4/images\""
+
+    for demo_dir in "$builddir/qnx_examples"/gtk4_*; do
+        demo=$(basename "$demo_dir")
+        if ! [ -d "$demo_dir/src" ]; then
+            continue
+        fi
+        
+        cd "$demo_dir/src"
+
+        # Find all .c files in this demo
+        _demo_src=$(find . -maxdepth 1 -name "*.c")
+        if ! [ -n "$_demo_src" ]; then
+            continue
+        fi
+
+        # Check if there's an include directory
+        if [ -d "../include" ]; then
+            _demo_cflags="$_demo_cflags -I../include"
+        fi
+
+        _cmd="$CC $_dep_cflags $_demo_cflags \
+                  $_dep_inc  $_demo_src \
+                  $_dep_lib_dirs $_dep_libs \
+                  -o $_demo_output/$demo"
+        echo "[CC] $_cmd"
+        if ! $_cmd; then
+            msg "Fail to build $demo"
+            return 1
+        fi
+    done
+}
+
+prepare() {
+    # Manual unpack because zip has non-standard naming
+    cd "$srcdir"
+
+    # Extract with overwrite, suppressing the prompts
+    unzip -o -q "$_qnx_branch.zip"
+
+    # Apply patches
+    cd "$builddir"
+    default_prepare
+}
+
+build() {
+    # Check for cross-compilation (not yet supported)
+    _extra_flags=""
+    if [[ $CBUILD = $CHOST ]]; then
+        _extra_flags=""
+    else
+        exit 1
+    fi
+
+    # Create QNX compatibility directory structure
+    mkdir -p "$builddir/qnx-compat/linux"
+
+    # Get absolute path for the include directory
+    cp "$srcdir/input-event-codes.h" "$builddir/qnx-compat/linux"
+    QNX_COMPAT_PATH=$(realpath "$builddir/qnx-compat")
+    msg "Copied input-event-codes.h to QNX compatibility directory"
+
+    abuild-meson \
+        -Dintrospection=enabled \
+        -Dbroadway-backend=false \
+        -Dqnxscreen-backend=true \
+        -Dman-pages=false \
+        -Dbuild-tests=false \
+        -Dbuild-testsuite=false \
+        -Ddocumentation=false \
+        -Dwayland-backend=true \
+        -Dx11-backend=false \
+        -Dmedia-gstreamer=disabled \
+        -Dvulkan=disabled \
+        -Ddefault_library=both \
+        -Dc_link_args="-Wl,-lsocket,-lm" \
+        -Dc_args="-I$QNX_COMPAT_PATH $CFLAGS" \
+        -Dcpp_args="-I$QNX_COMPAT_PATH $CXXFLAGS" \
+        . build
+
+    meson compile -C build
+
+    _build_qnx_demos
+}
+
+package() {
+    DESTDIR="$pkgdir" meson install --no-rebuild -C build
+
+    # Remove icon cache utilities (use from gtk3 or handle separately)
+    rm -f "$pkgdir"/usr/bin/gtk-update-icon-cache \
+          "$pkgdir"/usr/bin/gtk4-update-icon-cache \
+          "$pkgdir"/usr/share/man/man1/gtk-update-icon-cache.1
+}
+
+dev() {
+    default_dev
+    
+    # Move additional development tools
+    amove usr/bin/gtk4-builder-tool \
+          usr/bin/gtk4-encode-symbolic-svg \
+          usr/bin/gtk4-query-settings
+
+    # Move valgrind files if they exist
+    if [ -d "$pkgdir"/usr/share/gtk-4.0/valgrind ]; then
+        amove usr/share/gtk-4.0/valgrind
+    fi
+}
+
+demo() {
+    pkgdesc="$pkgdesc (demonstration application)"
+    depends="$pkgname=$pkgver-r$pkgrel"
+
+    # Move demo applications
+    amove usr/bin/gtk4-demo \
+          usr/bin/gtk4-demo-application \
+          usr/bin/gtk4-node-editor \
+          usr/bin/gtk4-print-editor \
+          usr/bin/gtk4-widget-factory
+
+    # Move demo-related files
+    amove usr/share/applications/*Demo4* \
+          usr/share/applications/*PrintEditor4* \
+          usr/share/applications/*WidgetFactory4* \
+          usr/share/applications/*NodeEditor* \
+          usr/share/glib-2.0/schemas/org.gtk.Demo4.gschema.xml \
+
+    amove usr/share/icons \
+          usr/share/metainfo
+}
+
+qnx_demos() {
+    pkgdesc="$pkgdesc (QNX-specific demonstration applications)"
+    depends="$pkgname=$pkgver-r$pkgrel"
+
+    mkdir -p $subpkgdir/usr/bin
+    for demo in $(ls "$_demo_output"); do
+        install -Dm755 "$_demo_output/$demo" "$subpkgdir/usr/bin/$demo"
+    done
+
+    mkdir -p $subpkgdir/usr/share/gtk4/images
+    install -m644 "$builddir/qnx_examples/images"/*.png "$subpkgdir/usr/share/gtk4/images/"
+}
+
+lang() {
+    default_lang
+
+    # These are some localized emoji labels.
+    amove usr/share/gtk-4.0/emoji
+}
+
+
+sha512sums="
+435bf4edabfca136812acf0bbe9e5fcd39a78945061509e16d7ceee3873b5dde982060e198b13e69dc2c85314557ded848ce49229123af504fe1993973fab54e  qnx_4.8.3.zip
+8584d15dcf839a0d42ca155b0daa3717cadd04d86932f16b89f04d22fab074d42d6c91bfde5f241aedbbf35e73e4734028e642ef893dcc2afe79c205fe209a42  qnx-wayland-support.patch
+7565e6b6dad4976e044348f013b61312767071ddcf0fbbd56fac4cb04f59d4df4e3f0a9f8a12e8d6e25e7480aa54cf7d3b03bb0031acfce4995e44d502e5bdeb  qnx-screen-library-paths.patch
+2f2adf4338be84b58ac459f98d8b4b4983d1f21c285065541ba7461aa4645e708db190182c373548aa89b24f220a0bc5938db48bfffd1c239f64033815dee71c  fix-qnxscreen-segfaults.patch
+60d7c7986bedbefd196258541936cdd49ecdc48cc5db01619a5d5841063412bc71f660ad1143164a5b5a27f43343084ec6b31c72e536f02c9e9660beb64cecca  qnx-disable-broken-vulkan-renderer.patch
+9c15657ca0b121a8c5128a066ba631782e1b22f51257d69e623181c806d3d883d27722c15850867ad546d6725d72b4c4612372a72e7111f94f04337a3ab38b60  input-event-codes.h
+559ff17b2402716bf84c5a02f4227a8695ed66a4cae2268c1fb9d5765c4250090678fb33f8fa3403da4dc219e6b775a180dbb42f6f5d2f8a6f1f6e5798d26f82  005-fix-wayland-geometry-crash.patch
+11a183d74d4ac162093cefcbe2e848291b969ce0e2342b09d29c8b58929a2d23d8ff63dde3dfc25adaefe8065d4d00f6e7161df707bf9da31078c9779767c5d2  006-fix-gtk4-window-management.patch
+"

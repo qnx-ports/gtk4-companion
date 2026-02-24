@@ -1,0 +1,22 @@
+--- gtk-qnx_4.8.3.orig/gsk/gpu/shaders/meson.build
++++ gtk-qnx_4.8.3/gsk/gpu/shaders/meson.build
+@@ -62,7 +62,7 @@
+                              capture: true)
+   gsk_private_gpu_gl_shaders += gl_shader
+ 
+-  if (have_vulkan)
++  if (have_vulkan and glslc.found())
+     glslc_options = [
+       [ fs.name (fs.replace_suffix (shader, '')) + '.1.2.vert.spv',
+         [ '--target-env=vulkan1.2',
+--- gtk-qnx_4.8.3.orig/meson.build
++++ gtk-qnx_4.8.3/meson.build
+@@ -637,7 +637,7 @@
+ # Uses meson's custom vulkan dependency searching. Set the VULKAN_SDK env var
+ # to use a custom path for the Vulkan SDK. Bugs that are found with it should
+ # be reported upstream and fixed.
+-vulkan_dep = dependency('vulkan',
++vulkan_dep = dependency('vulkan-broken-on-qnx',
+                         version: vulkan_req,
+                         required: vulkan_enabled)
+ glslc = find_program('glslc', required: vulkan_enabled)
