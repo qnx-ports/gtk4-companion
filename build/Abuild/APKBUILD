@@ -4,7 +4,7 @@
 # Revised by: Felix Xing <fxing@qnx.com>
 pkgname=gtk4
 pkgver=4.13.6
-pkgrel=5
+pkgrel=${pkgrel:-0}
 pkgdesc="The GTK Toolkit (v4)"
 url="https://www.gtk.org/"
 arch="all"
@@ -255,6 +255,7 @@ lang() {
 }
 
 
+options="$options ${DISABLE_CHECK:+!check}"
 sha512sums="
 435bf4edabfca136812acf0bbe9e5fcd39a78945061509e16d7ceee3873b5dde982060e198b13e69dc2c85314557ded848ce49229123af504fe1993973fab54e  qnx_4.8.3.zip
 8584d15dcf839a0d42ca155b0daa3717cadd04d86932f16b89f04d22fab074d42d6c91bfde5f241aedbbf35e73e4734028e642ef893dcc2afe79c205fe209a42  qnx-wayland-support.patch
